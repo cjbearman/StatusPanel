@@ -1,0 +1,309 @@
+substitutions:
+  name: esphome-web-0d7874
+  friendly_name: Door Status Panel
+
+esphome:
+  name: ${name}
+  friendly_name: ${friendly_name}
+  min_version: 2024.6.0
+  name_add_mac_suffix: false
+  project:
+    name: esphome.web
+    version: dev
+
+esp32:
+  board: esp32dev
+  framework:
+    type: arduino
+
+# Enable logging
+logger:
+
+# Enable Home Assistant API
+api:
+
+# Allow Over-The-Air updates
+ota:
+- platform: esphome
+
+# Allow provisioning Wi-Fi via serial
+improv_serial:
+
+wifi:
+  # Set up a wifi access point
+  ap: {}
+
+# In combination with the `ap` this allows the user
+# to provision wifi credentials to the device via WiFi AP.
+captive_portal:
+
+dashboard_import:
+  package_import_url: github://esphome/example-configs/esphome-web/esp32.yaml@main
+  import_full_config: true
+
+# Sets up Bluetooth LE (Only on ESP32) to allow the user
+# to provision wifi credentials to the device.
+esp32_improv:
+  authorizer: none
+
+# To have a "next url" for improv serial
+web_server:
+
+# Sensors to import values from home assistant
+binary_sensor:
+  - platform: homeassistant
+    id: front_door
+    entity_id: binary_sensor.front_door_opening
+    on_state: 
+      then:
+        - script.execute: show_status
+  - platform: homeassistant
+    id: back_door
+    entity_id: binary_sensor.back_door_opening
+    on_state: 
+      then:
+        - script.execute: show_status
+  - platform: homeassistant
+    id: side_door
+    entity_id: binary_sensor.side_door_opening
+    on_state: 
+      then:
+        - script.execute: show_status
+  - platform: homeassistant
+    id: pool_door
+    entity_id: binary_sensor.pool_door_opening
+    on_state: 
+      then:
+        - script.execute: show_status
+  - platform: homeassistant
+    id: gdo_small
+    entity_id: binary_sensor.esphome_web_7b1774_gdo_small_state
+    on_state: 
+      then:
+        - script.execute: show_status
+  - platform: homeassistant
+    id: gdo_large
+    entity_id: binary_sensor.esphome_web_7b1774_gdo_large_state
+    on_state: 
+      then:
+        - script.execute: show_status
+  - platform: homeassistant
+    id: gate
+    entity_id: binary_sensor.gate_web_a8d1a0_closed_endstop
+    on_state: 
+      then:
+        - script.execute: show_status
+text_sensor:
+  - platform: homeassistant
+    id: back_door_lock
+    entity_id: select.back_door_lock_current_lock_mode
+    filters:
+      - to_upper: 
+    on_value:
+      then:
+        - script.execute: show_status
+
+# Settings to control operation of device
+number:
+  id: brightness
+  name: "Brightness"
+  internal: False
+  platform: template
+  max_value: 100
+  min_value: 20
+  step: 10
+  initial_value: 50
+  mode: SLIDER
+  optimistic: True
+  restore_value: True
+  device_class: illuminance
+
+switch:
+  - platform: template
+    id: onoff
+    name: "On"
+    restore_mode: RESTORE_DEFAULT_ON
+    optimistic: True
+
+# Update status every 100ms
+interval:
+  - interval: 100ms
+    then:
+      - script.execute: show_status
+  
+
+# LED Strip WS2812, 7 pixels
+light:
+  - platform: esp32_rmt_led_strip
+    id: status
+    rgb_order: GRB
+    pin: GPIO16
+    num_leds: 7
+    rmt_channel: 0
+    chipset: ws2812
+
+# Operational scripts
+script:
+  - id: set_blue
+    then: 
+      - light.addressable_set: 
+          id: status
+          range_from: 0
+          range_to: 6
+          red: 0%
+          green: 0%
+          blue: 100%
+          color_brightness: !lambda return (id(brightness).state / 100);
+
+  - id: set_red
+    parameters: 
+      led: int
+    then: 
+      - light.addressable_set: 
+          id: status
+          range_from: !lambda return led;
+          range_to: !lambda return led;
+          red: 100%
+          green: 0%
+          blue: 0%
+          color_brightness: !lambda return (id(brightness).state / 100);
+  
+  - id: set_yellow
+    parameters: 
+      led: int
+    then: 
+      - light.addressable_set: 
+          id: status
+          range_from: !lambda return led;
+          range_to: !lambda return led;
+          red: 100%
+          green: 80%
+          blue: 0%
+          color_brightness: !lambda return (id(brightness).state / 100);
+
+  - id: set_green
+    parameters: 
+      led: int
+    then: 
+      - light.addressable_set: 
+          id: status
+          range_from: !lambda return led;
+          range_to: !lambda return led;
+          red: 0%
+          green: 100%
+          blue: 0%
+          color_brightness: !lambda return (id(brightness).state / 100);
+
+  - id: turn_off
+    then: 
+      - light.addressable_set: 
+          id: status
+          range_from: 0
+          range_to: 6
+          red: 0%
+          green: 0%
+          blue: 0%
+          color_brightness: 0%
+
+  - id: show_status
+    then:
+      - if:
+          condition:
+            - switch.is_off: onoff
+          then:
+            - script.execute: turn_off
+          else:
+            - if:
+                condition:
+                  - api.connected
+                then:
+                  - if: 
+                      condition: 
+                        - binary_sensor.is_on: front_door
+                      then: 
+                        - script.execute: 
+                            id: set_red  
+                            led: 0
+                      else:
+                        - script.execute:
+                            id: set_green
+                            led: 0
+                  - if: 
+                      condition: 
+                        - binary_sensor.is_on: back_door
+                      then: 
+                        - script.execute: 
+                            id: set_red  
+                            led: 1
+                      else:
+                        - if:
+                            condition:
+                              - text_sensor.state:
+                                  id: back_door_lock
+                                  state: "SECURED"
+                            then:
+                              - script.execute:
+                                  id: set_green
+                                  led: 1
+                            else:
+                              - script.execute:
+                                  id: set_yellow
+                                  led: 1
+                  - if: 
+                      condition: 
+                        - binary_sensor.is_on: side_door
+                      then: 
+                        - script.execute: 
+                            id: set_red  
+                            led: 2
+                      else:
+                        - script.execute:
+                            id: set_green
+                            led: 2
+                  - if: 
+                      condition: 
+                        - binary_sensor.is_on: pool_door
+                      then: 
+                        - script.execute: 
+                            id: set_red  
+                            led: 3
+                      else:
+                        - script.execute:
+                            id: set_green
+                            led: 3
+                  - if: 
+                      condition: 
+                        - binary_sensor.is_off: gdo_large
+                      then: 
+                        - script.execute: 
+                            id: set_red  
+                            led: 4
+                      else:
+                        - script.execute:
+                            id: set_green
+                            led: 4
+                  - if: 
+                      condition: 
+                        - binary_sensor.is_off: gdo_small
+                      then: 
+                        - script.execute: 
+                            id: set_red  
+                            led: 5
+                      else:
+                        - script.execute:
+                            id: set_green
+                            led: 5
+                  - if: 
+                      condition: 
+                        - binary_sensor.is_off: gate
+                      then: 
+                        - script.execute: 
+                            id: set_red  
+                            led: 6
+                      else:
+                        - script.execute:
+                            id: set_green
+                            led: 6
+                else:
+                  - script.execute: set_blue
+
