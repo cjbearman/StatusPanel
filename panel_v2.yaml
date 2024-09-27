@@ -107,7 +107,11 @@ switch:
     name: "On"
     restore_mode: RESTORE_DEFAULT_ON
     optimistic: True
-
+  - platform: template
+    id: flash_enable
+    name: "Flash Enabled"
+    restore_mode: RESTORE_DEFAULT_ON
+    optimistic: True
 
 # LED Strip WS2812, 7 pixels
 light:
@@ -173,7 +177,8 @@ light:
             }
 
             // Set flash counts for any entity that changed state on this iteration
-            if (api_up_count >= api_stable_after_iterations) {
+            int flash_enabled = id(flash_enable).state;
+            if (api_up_count >= api_stable_after_iterations && flash_enabled) {
               for (int i=0; i<7; i++) if (prev[i]!=states[i]) flash[i]=num_flashes_on_state_change;
             } else {
               for (int i=0; i<7; i++) if (prev[i]!=states[i]) flash[i]=0;
@@ -186,7 +191,7 @@ light:
 
             // Loop through each LED and set as needed
             for (int i=0; i<7; i++) {
-              if (flash[i] > 0 && (pos % flash_frequency) == 0) {
+              if (flash_enabled && flash[i] > 0 && (pos % flash_frequency) == 0) {
                 // The flash counter is >0 and we are on a flash iteration, so full brightness White
                 // flash counter is decremented
                 flash[i]--;
